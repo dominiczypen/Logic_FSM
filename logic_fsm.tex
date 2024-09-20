@@ -1,0 +1,536 @@
+% Author: Dominic van der Zypen
+% Editor: vi
+% Last modified 2021-03-19
+
+\documentclass[12pt]{amsart}
+\usepackage{tikz}
+\usetikzlibrary{arrows,shapes.gates.logic.US,shapes.gates.logic.IEC,calc}
+\tikzstyle{branch}=[fill,shape=circle,minimum size=3pt,inner sep=0pt]
+%\usepackage{amssymb}
+%\usepackage{amsthm}
+%\usepackage{amsfonts}
+\newtheorem{lemma}{\bf Lemma}[section]
+\newtheorem{theorem}[lemma]{\bf Theorem}
+\newtheorem{corollary}[lemma]{\bf Corollary}
+\newtheorem{proposition}[lemma]{\bf Proposition}
+\newtheorem{fact}[lemma]{\bf Fact}
+\newtheorem{definition}[lemma]{\bf Definition}
+\newtheorem{remark}[lemma]{\bf Remark}
+\newcommand{\restrict}{\mbox{$\mid$}}
+
+\begin{document}
+
+%...... title
+\title{Converting Boolean functions to finite state machines}
+
+%...... authors
+\author{Dominic van der Zypen}
+%\address{...Switzerland}
+%\email{dominic.zypen@gmail.com}
+
+%......MSC subject class
+%\subjclass[2010]{05C15, 05C83}
+
+%....... main()
+\maketitle
+\parindent = 0mm
+\parskip = 2 mm
+%--------------------------
+\section{Problem setting}
+We want to detect some events based on simple
+Yes/No rules that are connected via {\tt AND} and
+{\tt OR} gates.
+
+The goal is to try to classify events into 
+problematic vs non-problematic even if only partial
+information is available.
+
+Ficticious example:
+
+Suppose we know that an event is only problematic if
+\begin{itemize}
+    \item the message transmitted contains the substring 
+        {\tt ''execute''}, {\bf and}
+    \item the port used is 8500.
+\end{itemize}
+Suppose we haven't analysed the message transmission yet, 
+but we know that the message came through port 4112.
+Then by the above AND-rule, we can already classify
+as non-problematic and don't need to wait for the result
+of the analysis of the message.
+
+%--------------------------
+\section{Disjuncitve Normal Form DNF}
+Note that $\land$ denotes Boolean {\tt AND} (mnemonic:
+$\land$ looks like 'A' as in AND), and $\lor$ denotes Boolean {\tt OR}
+(mnemonic: $\lor$ looks like 'V' in Latin VEL meaning
+OR/AND which exactly captures the meaning of logical OR). 
+
+Any Boolean expression can be written in the form 
+
+$$(X_{1,1}\land\ldots\land X_{1,n_1}) \lor (Y_{2,1}\land\ldots\land Y_{2,n_2})\lor \ldots
+\lor (X_{k,1}\land\ldots\land X_{k,n_k})$$
+
+where every $X_{i,j}$ is either a basic variable or a
+negation of a basic variable.
+
+We call this canonical form the {\em disjunctive normal form (DNF)}.
+
+%--------------------------
+\section{Simplifying assumptions}
+\begin{enumerate}
+    \item We can get by using NO NEGATIONS as we formulate triggers 
+        positively.
+    \item We assume our filter formula is given in {\em disjunctive normal
+        form} (DNF) as introduced above. Any Boolean formula can be 
+        transformed
+        into DNF, and it is easier to do so if the formula doesn't include
+        negatives (see item 1). 
+    \item Per item to be analyzed, every trigger gets only set
+        once to 0 or 1, there are no corrections or repetitions.
+\end{enumerate}
+
+%--------------------------
+\section{Finite state machine: definition}
+Formally, a {\em finite state machine (FSM)} is a 5-tuple $(\Sigma, S, s_0,
+\delta, F)$ where
+\begin{itemize}
+        \item $\Sigma\neq \emptyset$ is the {\em input alphabet},
+        \item $S$ is the {\em set of states},
+        \item $s_0\in S$ is the {\em initial state},
+        \item $\delta:S\times \Sigma \to S$ is the {\em transition 
+            function},
+        \item $F\subseteq S$ is the set of {\em final states}. 
+            For ``ever-running'' machines, we may have $F=\emptyset$. 
+\end{itemize}
+Recall that for any Boolean expression, we can convert it to a canonical
+form, the disjunctive normal form (DNF).  So there is a big 
+OR gate, and we have 
+small AND gates, all at the same level, leading into the big
+OR gate. This is expressed with the formula we already saw:
+
+$$(X_{1,1}\land\ldots\land X_{1,n_1}) \lor (Y_{2,1}\land\ldots\land Y_{2,n_2})\lor \ldots
+\lor (X_{k,1}\land\ldots\land X_{k,n_k})$$
+
+The goal for the remainder of this note is to build a finite state
+machine (FSM) that can evaluate a Boolean formula given in DNF
+even with only partial information - if that information is sufficient
+to determine the truth value of the whole formula.
+
+%--------------------------
+\section{Building a DNF FSM}\label{fsm1}
+
+There are several ways to build a finite state machine that
+adheres to the disjunctive normal form. We present one
+variant that appears quite natural - whether it 
+will fit the business purposes, remains to be seen.
+
+First we want to depict the DNF (disjunctive normal form) situation
+graphically. By $x_{i,j}$ we denote the inputs (triggers),
+some of which may be set to TRUE, others to FALSE, and
+about some others the status may not be known.
+
+\vspace*{3mm}
+
+\begin{tikzpicture}[label distance=2mm]
+
+    % ---- input nodes
+    \node (x11) at (0,0) {$x_{1,1}$};
+    \node (x1ldots) at (1,0) {$\ldots$};
+    \node (x1n) at (2,0) {$x_{1,n_1}$};
+
+    \node (x21) at (4,0) {$x_{2,1}$};
+    \node (x2ldots) at (5,0) {$\ldots$};
+    \node (x2n) at (6,0) {$x_{2,n_2}$};
+
+    \node (ldots) at (8,0) {$\ldots$};
+
+    \node (xk1) at (10,0) {$x_{k,1}$};
+    \node (xkldots) at (11,0) {$\ldots$};
+    \node (xkn) at (12,0) {$x_{k,n_k}$};
+    
+    \node (row) at ($(x1ldots)+(2,-2)$) {\scriptsize{(row of $k$ 
+    {\tt AND}-gates)}};
+        % print "k AND-gates"
+    \node (bigor) at ($(x2ldots)+(4.5,-4)$) {\scriptsize{({\tt OR}-gate taking input from the 
+    {\tt AND}-gates)}};
+        % print "OR-gate"
+    \node (output) at ($(x2ldots)+(1,-5.5)$) {\scriptsize{(output)}};
+        % print "Output"
+    % ---- gates
+    \node[and gate US, draw, logic gate inputs=nnn, rotate=-90] at ($(x11)+(1,-2)$) (And1) {};
+    \node[and gate US, draw, logic gate inputs=nnn, rotate=-90] at ($(x21)+(1,-2)$) (And2) {};
+    \node[and gate US, draw, logic gate inputs=nnn, rotate=-90] at ($(xk1)+(1,-2)$) (Andk) {};
+    % -> leading into one big AND gate:
+    \node[or gate US, draw, logic gate inputs=nnn, rotate=-90] at ($(x2ldots)+(1,-4)$) (Or0) {};
+
+    % ---- connections
+    
+    % 1) OR gate 1
+    \draw (x11)  -- ++(0,-1) -| (And1.input 3);
+            % |-  and -| instead of -- for "rectangular" drawing
+    \draw (x1ldots) |- (And1.input 2);
+    \draw (x1n) -- ++(0,-1) -| (And1.input 1);
+
+    % 1) OR gate 2
+    \draw (x21)  -- ++(0,-1) -| (And2.input 3);
+    \draw (x2ldots) |- (And2.input 2);
+    \draw (x2n) -- ++(0,-1) -| (And2.input 1);
+
+    % 3) OR gate k
+    \draw (xk1)  -- ++(0,-1) -| (Andk.input 3);
+    \draw (xkldots) |- (Andk.input 2);
+    \draw (xkn) -- ++(0,-1) -| (Andk.input 1);
+    
+    % connections from the OR gates to the BIG AND gate:
+
+    \draw (And1.output)  -- ++(0,-0.5) -| (Or0.input 3);
+    \draw (And2.output)  -- ++(0,-0.2) -| (Or0.input 2);
+    \draw (Andk.output)  -- ++(0,-0.5) -| (Or0.input 1);
+
+    % connections from BIG AND gate to (output)
+
+    \draw[->] (Or0.output)  -> ++(0,-0.8); % [->] = arrow
+
+\end{tikzpicture}
+\begin{lemma}\label{classify}
+It is easy to classify the output given the following
+kinds of partially available inputs:
+\begin{enumerate}
+    \item If for every {\tt AND}-gate, we have at least 
+        one false input, the output is FAIL (false).
+    \item If for at least one {\tt AND}-gate, say 
+        ${\tt AND}_i$, where $i\in\{1,\ldots,k\}$, all the inputs 
+        are TRUE, or formally,
+        if $$x_{i,j} = 1 \text{ for all } j\in \{1,\ldots,n_i\}$$
+        then the output is HIT (true).
+    \item Otherwise, the output is undefined.
+\end{enumerate}
+\end{lemma}
+Based on this easy classification, we will now give a mathematical
+description adhering to the definition of a finite state machine.
+
+As depicted above, we have 1 big {\tt OR}-gate, with
+$k$ {\tt AND}-gates are feeding into it. The {\tt AND}-gate number $i$
+has $n_i$ inputs which we call ``triggers''. Each trigger can 
+be set to TRUE (T), FALSE (F), or it is undefined.
+
+\subsection{Input alphabet $\Sigma$} We set  $\Sigma = \{1,\ldots,k\} \times \{T, F\}$. 
+    That is, an ``input event'' consists of the number of the {\tt AND}-gate 
+    into which the corresponding trigger feeds, and the truth value 
+    indecating whether the trigger is set to T or F. So, for example
+    input $(3, T)$ means that one trigger leading into {\tt AND}-gate
+    number 3 is set to true (T). (Note that any trigger can be set only
+    {\bf once}, see the section on simplifying assumptions above.)
+
+\subsection{Set of states $S$} First, for any positive integer $m\in\mathbb{N}$,
+    we define $$[n]^* := \{0,1,\ldots,n\} \cup\{-1\}$$ 
+    and set $$S = [n_1]^* \times [n_2]^* \times \cdots \times [n_k]^*.$$
+    So every state is a vector. We now give the interpretation of these
+    state vectors: If $v\in S$, then if $v_i >0$ means that $v_i$ inputs
+    have {\bf not yet} been set to TRUE.  If $v_i=1$, this means that all but $1$
+    inputs are set to TRUE, and if we receive another TRUE input for {\tt AND}-gate $i$,
+    then {\tt AND}-gate $i$ has all inputs set to TRUE and is TRUE itself,
+    which also renders the output of the {\tt OR}-gate TRUE. If we receive a
+    FALSE input into {\tt AND}-gate $i$, that is the member of the input alphabet
+    is $(i, F)$, then immediately we know that the output of {\tt AND}-gate $i$ 
+    must be FALSE. To indicate this, we set $v_i = -1$. Note that if 
+    our state vector is $-1$ at every position, that is $v_i = -1$ for all $i$, 
+    then the output of the {\tt OR}-gate is FALSE too, and we have reached 
+    a terminal state.
+    
+    Let's consider two examples:
+    \begin{itemize}
+        \item $k = 2$, and $v = (3,1)$. This means we have $2$ {\tt AND}-gates 
+        and in the first gate, all except $3$ entry points are TRUE,
+        and for the second {\tt AND}-gate, all except $1$ entries
+        have been set to TRUE.
+        \item $k= 3$ and $v = (2, 1, -1)$. Similar as above, except 
+        {\tt AND}-gate number 3 has seen one entry point being set to FALSE 
+        (which makes the whole {\tt AND}-gate 3 output FALSE). 
+    \end{itemize}
+    
+\subsection{Set of terminal states  $F$} $F\subseteq S$ is defined by
+    $$F:= F_{\text{true}} \cup F_{\text{false}},$$ where 
+    $$F_{\text{true}} = \big\{v\in S: \exists i\in\{1,\ldots,k\}
+    (v_i=0)\big\},$$
+    and 
+    $$F_{\text{false}} = \big\{v\in S: \forall i\in\{1,\ldots k\}
+    (v_i = -1)\big\} = \big \{(-1,-1,\ldots,-1)\big\}.$$
+    Note that $F_{\text{false}}$ only has $1$ element, the constant -1 vector, 
+    which is reached when every {\tt AND}-gate has seen some FALSE 
+    input. A final state in $F_{\text{true}}$ is reached when 
+    for some {\tt AND}-gate, all the inputs have been set to true.
+    Every member of $S\setminus F$ is considered to be an ``undefined'' 
+    or non-final state.
+\subsection{Initial state $s_0\in S$} We set $$s_0 = (n_1, n_2, \ldots, n_k).$$
+Recall that this means that for every {\tt AND}-gate, NO inputs have been 
+set to TRUE, because we are at the beginning of the process.
+
+\subsection{Transition function $\delta: S\times \Sigma \to S$}
+And now we need to define the transition function $\delta: S \times \Sigma
+\to S$, which is the ``clockwork'' of the whole finite state machine.
+\begin{itemize}
+    \item End state behaviour: Whenever $v\in F$ and $\sigma \in \Sigma$ 
+    we set $\delta(v, \sigma) = v$.
+    \item Suppose $\sigma = (i, T) \in \Sigma$ where $i\in\{1,\ldots,k\}$, 
+    and $v\in S$.
+    \begin{enumerate}
+        \item If $v_i = -1$ we set $\delta(v, \sigma) = v$.
+        \item If $v_i \geq 1$ we set $\delta(v,\sigma) = v'$ where $v'_i = v_i -1$ 
+        and $v'_j = v_j$ for all $j\in \{1,\ldots,k\}\setminus\{i\}$. 
+        \item Note that we do not have to cover the case $v_i = 0$ as this 
+        is an end state, and we covered end states in the bullet point above. 
+    \end{enumerate}
+    \item Suppose $\sigma = (i, F) \in \Sigma$ where $i\in\{1,\ldots,k\}$, 
+    and $v\in S$.
+    \begin{enumerate}
+        \item If $v_i = -1$ we set $\delta(v, \sigma) = v$.
+        \item If $v_i \geq 1$ we set $\delta(v,\sigma) = v'$ where $v'_i = -1$ 
+        and $v'_j = v_j$ for all $j\in \{1,\ldots,k\}\setminus\{i\}$. 
+        \item Note that we do not have to cover the case $v_i = 0$ as this 
+        is an end state, and we covered end states in the bullet point above. 
+    \end{enumerate}
+\end{itemize}
+Size of state space: It is easy to see that for any $n\in\mathbb{N}$ we 
+have $$\text{card}([n]^*) = \big|[n]^*\big| = n+2.$$
+So $$\text{card}(S) = \text{card}\big([n_1]^* \times [n_2]^* 
+\times \ldots \times [n_k]^* \big) =
+\prod_{i=1}^k (n_i+2).$$
+
+%--------------------------
+\section{A DNF FSM WITH ``TRIGGER MEMORY''}
+
+It turns out that in our application, the third of the simplifying 
+assumptions does not hold. Recall that this was:
+\begin{quote}
+    (3) Per item to be analyzed, every trigger gets only set
+        once to 0 or 1, there are no corrections or repetitions.
+\end{quote}
+
+So, if triggers can be set more than once, we need some kind 
+of ``memory'' to store the information which trigger has been set
+to what truth value, and which triggers are still undefined. (In the
+AA standup, we referred to that as the ``idempotence property''.)
+
+Not surprisingly the state space (set of possible states) will increase
+considerably.
+
+In this section, we build a finite state machine that stores the state
+of the trigger and therefore is not changed in its state if 
+a trigger is set more than once. 
+
+We are using the same setting, 
+variables, and indices as in section \ref{fsm1}.
+
+Now we give a formal description of the FSM. Outlook: it will have 
+\begin{itemize}
+    \item a large state space $S$ unfortunately (but we warned of this before), and
+    \item some good news: a very simple transition 
+        function $\delta:S\times \Sigma \to S$!
+\end{itemize}
+
+\subsection{Input alphabet $\Sigma$} Let $N = \max\{n_1, \ldots, n_k\}$ 
+be the maximum number of triggers that any {\tt AND}-gate has. 
+We set $$\Sigma = \{1,\ldots, k\}\times\{1,\ldots,N\} \times \{0,1\}.$$
+In the last set of the Cartesian product, we interpret $0$ as FALSE and $1$ 
+as TRUE.
+
+We interpret $(i,j,b)\in \Sigma$ as \begin{quote}
+    ``in {\tt AND}-gate number $i$ set trigger number $j$ to $b$.''
+\end{quote}
+This begs the question, what happens if $j>n_i$, that is $j$ is larger than 
+the number of triggers that {\tt AND}-gate number $i$ has? We set the transition
+function $\delta:S\times \Sigma\to S$ to just do nothing in that case, that is to 
+output the same state again. We'll come to that in a moment.
+
+\subsection{State space $S$} 
+Our basic units of information now are
+\begin{itemize}
+\item 0, corresponding to FALSE
+\item 1, corresponding to TRUE
+\item $u$, corresponding to ``undefined'' (meaning a trigger has 
+    not yet been set).
+\end{itemize}
+Set $$S := \{0,1,u\}^{n_1} \times \{0,1,u\}^{n_2}\times \ldots \times \{0,1,u\}^{n_k}.$$
+The set $S$ represents all possible configurations of the triggers for each 
+{\tt AND}-gates. (Recall
+that {\tt AND}-gate number $i$ has $n_i$ triggers feeding into it.) 
+
+So $v\in S$ is 
+a vector of $k$ elements, and for $i\in\{1,\ldots,k\}$, the element $v_i$ 
+is itself a vector of $n_i$ elements, each which is either $0,1$, or $u$. 
+
+{\em Example.} Let $k=3$ and $n_1 = 2, n_2 = 5, n_3 = 3$. So we 
+have $3$ {\tt AND}-gates, the first with 2 triggers, the second with 5, 
+and the last with 3 triggers. One example member of $S$ would be
+$$v:=\big((1,u), (u,u,0,0,1), (u, u, 0)\big).$$
+So for instance we have $(v_1)_2 = u$, as the second element of 
+the first vector is $u$, and $(v_2)_3 = 0$. 
+
+\subsection{Set of terminal states $F$} 
+Based on the classification lemma \ref{classify} we can write
+$F := F_{\text{false}}\cup F_{\text{true}}$ where
+\begin{enumerate}
+    \item $F_{\text{false}}$ consists of all members of $S$
+        such that for all $i\in\{1,\ldots,k\}$ the vector
+        $v_i$ contains some element that is $0$, and
+    \item $F_{\text{true}}$ consists of all members of $S$
+        such that there is $i\in\{1,\ldots k\}$ such that
+        the vector $v_i$ is the constant-1-vector (more formally,
+        $$(v_i)_j = 1 \text{ for all } j\in \{1,\ldots, n_i\}.$$
+\end{enumerate}
+
+\subsection{Initial state $s_0\in S$} We set $s_0$ to be the
+vector $$\big(\underbrace{(u,\ldots, u)}_{\text{length }n_1},
+\underbrace{(u,\ldots,u)}_{\text{length }n_2},\ldots 
+\underbrace{(u,\ldots, u)}_{\text{length }n_k}\big).$$
+Or more formally set $(v_i)_j = u$ for all $i\in\{1,\ldots, k\}$ and 
+$j\in\{1,\ldots,n_i\}$ and set $s_0 :=v$.
+
+\subsection{Transition function $\delta: S\times \Sigma \to S$}
+\begin{itemize}
+    \item End state behaviour: for $e\in F, \sigma\in \Sigma$ we set
+        $\delta(e,\sigma) = e$.
+    \item Suppose $v\in S \setminus F$ and let $\sigma = (i, j, b)\in \Sigma$, 
+        where $i\in \{1,\ldots, k\}, j\in \{1,\ldots, N\}$
+        \footnote{(recall $N = \max\{n_1,\ldots, n_k\}$)}, and $b\in \{0,1\}$. 
+        We distinguish two cases:
+
+        \begin{itemize}
+            \item $j > n_i$: then do nothing, i.e. $\delta(v, (i,j,b)) = v$.
+            \item $j \leq n_i$: set the value of $(v_i)_j$ to $b$, and otherwise
+                leave $v$ unchanged. More formally, 
+                define $v'\in S$ by:
+                \begin{quote}
+                $(v'_i)_j := b$, \\ 
+                $(v'_i)_y := (v_i)_y$ for  $y \in \{1,\ldots n_i\} \setminus \{j\}$, and \\
+                $v'_z = v_z$  for $z \in \{1,\ldots,k\}\setminus \{i\}.$
+                \end{quote}
+
+                \vspace*{2mm}
+
+                Then set $\delta(v, (i,j,b)) := v'$.
+        \end{itemize}
+\end{itemize}
+
+Note that this finite state machine not only has a trigger memory,
+(so it has the idempotence property that we discussed in the AA 
+meeting), it even allows for ``corrections'', that is
+triggers that receive input TRUE first and then get
+corrected to FALSE (this was not in the requirements). 
+
+The state space size of this FSM is $$\text{card}(S) = 3^{(\sum_{i=1}^k n_i)}.$$
+
+(Note that $\sum_{i=1}^k n_i$ is the total number of triggers.)
+
+%--------------------------
+\section{An ``order-theoretical'' approach}
+% - - - - - - -
+\subsection{Informal description of the idea} 
+Suppose we are given a Boolean function
+$$f: \{0,1\}^n\to\{0,1\}$$
+that is entirely made up of $\land$ and $\lor$ and does not use 
+negation ($\neg$). Assume that 
+we are given the truth value (0 or 1) for some 
+of the $n$ triggers, and for others, we do not know their truth
+value. 
+Then we propose the following procedure:
+\begin{itemize}
+\item Set all triggers with unknown truth value to 0 (FALSE) and 
+calculate $f()$.
+\item Set all triggers with unknown truth value to 1 (TRUE) and 
+calculate $f()$.
+\end{itemize}
+If the output values of $f$ calculated above {\bf agree}, we can conclude 
+(with an argument given in  the 
+next section) that $f$ will give the same output {\bf no matter} what
+truth values we give the triggers with unknown truth value. Therefore 
+we can give an output with confidence in that case.
+
+If the two values do not agree, we cannot give an output for $f$ given 
+the partial information of the triggers of which we know the truth value.
+% - - - - - - -
+\subsection{(Order-theoretical) justification of the method given above}
+\begin{definition} A {\em partially ordered set} or {\em poset} for short 
+is a pair $(P,\leq_P)$ consisting of a base set $P$ and a binary relation 
+$\leq_R \,  \subseteq \, P\times P$ such that 
+\begin{enumerate}
+    \item $(p,p)\in \,\leq_P$ for all $p\in P$ (``reflexivity'');
+    \item $(p,q), (q,p) \in \, \leq_P$ implies $p=q$ (``anti-symmetry''), and 
+    \item $(p,q), (q,r)\in \, \leq_P$ implies $(p,r)\in \, \leq_P$ (``transitivity'').
+\end{enumerate}
+Usually we write $p \leq_P q$ instead of $(p,q)\in\leq_P$.
+\end{definition}
+
+As an easy example of a poset, consider $\{0,1\}$ with the relation 
+$$\leq = \{(0,0), (0,1), (1,1)\}.$$ For short, we say $\{0,1\}$ is 
+{\em ordered by} $0\leq 1$.
+
+The next example will give a hint of why these definitions will 
+be important later: Let $P = \{0,1\}^n$ the set of all $\{0,1\}$-vectors
+of length $n$, and we say that for $x,y\in \{0,1\}^n$ we have
+$$x \leq y \text{ if and only if } 
+x_i \leq y_i \text{ for all }i\in\{1,\ldots,n\}.$$
+
+It is an easy exercise to verify that this gives us a poset.
+
+\begin{definition} Let $(P, \leq_P), (Q, \leq_Q)$ be posets. 
+A map $f:P\to Q$ is said to be {\em monotone} if
+$$x\leq_P y \implies f(x)\leq_Q f(y) \text{ for all }x,y\in P.$$
+\end{definition}
+
+The following are examples of monotone functions:
+\begin{itemize}
+    \item $\land: \{0,1\}^2\to \{0,1\}$, 
+    \item $\lor: \{0,1\}^2\to \{0,1\}$.
+\end{itemize}
+
+The next lemma deals with the composition of monotone functions and 
+is quite easy to prove. 
+
+\begin{lemma} If $P, Q, Z$ are posets and $f: P\to Q, g: Q\to Z$ are 
+monotone functions, then so is $$g\circ f: P\to Z.$$
+\end{lemma}
+
+So in particular, we have:
+
+\begin{corollary}\label{andor_lemma}
+Any Boolean function $f:\{0,1\}\to \{0,1\}$ not containing negation ($\neg$),
+but only consisting of $\land, \lor$ is a composition of the monotone 
+functions $\lor$ and $\land$ (respectively, possibly multiple copies of these)
+and it is therefore {\em monotone}.
+\end{corollary}
+
+We can apply the following ``sandwich lemma'' directly to our situation.
+
+\begin{lemma}\label{sandwich_lemma} 
+If $P, Q$ are posets and $f:P\to Q$ is monotone, and 
+$a<b \in P$ such that $f(a) = f(b)$, then:
+\begin{quote}
+for all $x\in P$ with $a\leq x \leq b$ we have $f(a) = f(x) = f(b)$. 
+\end{quote}
+\end{lemma}
+
+Let's revisit our starting situation. We are given a 
+Boolean function $f:\{0,1\}\to \{0,1\}$ not containing negation ($\neg$),
+but only consisting of $\land, \lor$. By lemma \ref{andor_lemma} we 
+know that $f$ is monotone.
+
+Now, we are ready to use the sandich lemma \ref{sandwich_lemma}. 
+We know the truth values for some of the inputs. If we set all other 
+inputs to 0, we get variable $a$ in the sandwich lemma: we 
+go as low as possible. If we set all inputs with unknown truth value 
+to $1$, we go as high as possible, that is, we get variable $b$ 
+in the sandwich lemma. 
+
+Any assignment of $\{0,1\}$ to the inputs (triggers) with unknown
+truth value will result in an input vector $x$ that is {\bf sandwiched} 
+between $a$ and $b$, i.e. $$a \leq x \leq b.$$ 
+
+So we meet the pre-condition of the sandwich lemma and get that 
+no matter what the input vector $x$ looks like, we get $f(x) = f(a) = f(b)$.
+
+So we can give a definite output for $f$ even for our partial input.
+
+\end{document}
